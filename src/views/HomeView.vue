@@ -31,7 +31,7 @@ function initScoket(url, callback) {
   return socket
 }
 
-const socket = initScoket('http://10.2.11.182:3000/', onReceive)
+const socket = initScoket('http://webrtc-file.isgxj.com/', onReceive)
 
 function submitEmit(sdp, ice, isClose = false) {
   const { password, name } = vdata
