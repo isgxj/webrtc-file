@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue'
 import { io } from "socket.io-client";
+import { getTurns } from '../utils/index'
 
 const vdata: any = reactive({
   linkIngs: [],
@@ -31,7 +32,7 @@ function initScoket(url, callback) {
   return socket
 }
 
-const socket = initScoket('http://webrtc-file.isgxj.com/', onReceive)
+const socket = initScoket('https://webrtc-file.isgxj.com/', onReceive)
 
 function submitEmit(sdp, ice, isClose = false) {
   const { password, name } = vdata
@@ -39,20 +40,21 @@ function submitEmit(sdp, ice, isClose = false) {
 }
 
 const serverConfig = {
-  iceServers: [
-    {
-      urls: [
-        'stun:stun.l.google.com:19302',
-        'stun:global.stun.twilio.com:3478'
-      ]
-    }
-  ],
+  iceServers: [],
   sdpSemantics: 'unified-plan'
 }
 
+async function initIceServers(callback) {
+  if (thisData.inited) {
+    callback()
+    return
+  }
+  serverConfig.iceServers = await getTurns()
+  thisData.inited = true
+}
+
 function pushWait(data) {
-  const { waitList } = vdata
-  vdata.waitList = [...waitList.filter(item => item.password !== data.password), data]
+  vdata.waitList.push(data)
 }
 
 function pushLinking(item) {
@@ -61,6 +63,7 @@ function pushLinking(item) {
 }
 
 function onReceive(data) {
+  console.log(data);
   if (data.password !== vdata.password) {
     pushWait(data)
     return
@@ -68,11 +71,9 @@ function onReceive(data) {
   const item = thisData.sender
   const { peer } = item || {}
   if (!peer) return
-  item.name = data.name
+  thisData.sender.name = data.name
   peer.setRemoteDescription(data.sdp)
   peer.addIceCandidate(data.ice)
-  pushLinking(item)
-  thisData.sender = {}
 }
 
 function initSender() {
@@ -87,6 +88,8 @@ function initSender() {
   const channel = peer.createDataChannel("chat")
   channel.onopen = () => {
     console.log('连接成功！');
+    pushLinking(thisData.sender)
+    thisData.sender = {}
   };
   channel.onmessage = (event) => {
     console.log(event.data)
@@ -101,7 +104,7 @@ function initSender() {
   thisData.sender = { peer, channel }
 }
 
-function initReciver({ sdp, ice, name }) {
+function initReciver(ices) {
   const peer2 = new RTCPeerConnection(serverConfig);
 
   peer2.onicecandidate = event => {
@@ -113,15 +116,17 @@ function initReciver({ sdp, ice, name }) {
     const channel = event.channel;
     channel.onopen = () => {
       console.log('连接成功！');
-      pushLinking({ peer: peer2, channel, name })
+      pushLinking({ peer: peer2, channel, name: ices[0].name })
     };
     channel.onmessage = (event) => {
       console.log(event.data);
       vdata.text = event.data
     };
   };
-  peer2.setRemoteDescription(sdp)
-  peer2.addIceCandidate(ice)
+  for (const item of ices) {
+    peer2.setRemoteDescription(item.sdp)
+    peer2.addIceCandidate(item.ice)
+  }
   peer2.createAnswer().then(answer => {
     console.log('创建 answer')
     peer2.setLocalDescription(answer)
@@ -142,7 +147,7 @@ function startConnection() {
     console.log('请输入密码')
     return
   }
-  initSender()
+  initIceServers(initSender)
 }
 
 function joinConnection() {
@@ -151,16 +156,12 @@ function joinConnection() {
     return
   }
   const { waitList } = vdata
-  const [item] = waitList.filter(d => d.password === vdata.password)
-  if (!item) {
+  const items = waitList.filter(d => d.password === vdata.password && !d.isClose)
+  if (!items.length) {
     console.log('未发起连接');
     return
   }
-  if (item.isClose) {
-    console.log('已失效');
-    return
-  }
-  initReciver(item)
+  initIceServers(() => initReciver(items))
   vdata.waitList = waitList.filter(d => d.password !== vdata.password)
 }
 </script>
