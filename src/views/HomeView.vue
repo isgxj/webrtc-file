@@ -51,6 +51,7 @@ async function initIceServers(callback) {
   }
   serverConfig.iceServers = await getTurns()
   thisData.inited = true
+  callback()
 }
 
 function pushWait(data) {
