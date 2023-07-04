@@ -9,6 +9,7 @@ const vdata: any = reactive({
 })
 const thisData: any = {
   sender: {},
+  cbs: [],
 }
 
 function initScoket(url, callback) {
@@ -49,10 +50,17 @@ async function initIceServers(callback) {
     callback()
     return
   }
+  thisData.cbs.push(callback)
+  if (thisData.initing) {
+    return
+  }
+  thisData.initing = true
   serverConfig.iceServers = await getTurns()
   thisData.inited = true
-  callback()
+  thisData.cbs.map(cb => cb())
+  thisData.cbs = []
 }
+initIceServers(() => {})
 
 function pushWait(data) {
   vdata.waitList.push(data)
